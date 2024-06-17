@@ -19,6 +19,11 @@
 #include <unordered_map>
 #include <unordered_set>
 #include <algorithm>
+
+#include <cxxabi.h>
+#include <iostream>
+#include <memory>
+
 using namespace std;
 
 
@@ -46,12 +51,15 @@ struct TNode {
             sort(begin(xx), end(xx), greater<tt>());
             for (auto x: xx) {
                 auto count = get<0>(x);
-                if (100.0*count/c<1) continue;
+		        /* threshold of showing the result */
+                // if (100.0*count/c<1) continue;
                 auto name = get<1>(x);
                 auto nx = get<2>(x);
                 fprintf(fp, "<li>\n");
                 fprintf(fp, "<input type=\"checkbox\" id=\"c%d\" />\n", k);
-                fprintf(fp, "<label class=\"tree_label\" for=\"c%d\">%s(%.3f%% %d/%d)</label>\n", k, name.c_str(), 100.0*count/c, count, c);
+                fprintf(fp, "<label class=\"tree_label\" \
+				for=\"c%d\">%s(%.3f%% %d/%d)</label>\n",
+                        k, name.c_str(), 100.0*count/c, count, c);
                 fprintf(fp, "<ul>\n");
                 // printf("%s(%.3f%% %d/%d)\n", name.c_str(), 100.0*count/c, count, c);
                 k = nx->printit(fp, k+1);
@@ -68,9 +76,12 @@ using STORE_T = map<unsigned long long, pair<string, unsigned long long>>;
 using K_STORE_T = map<unsigned long long, string>;
 
 /*
- * load FUNC symbols refering to the section indicated by the offset, relocate the virtual address
+ * load FUNC symbols refering to the section indicated by the offset,
+ * relocate the virtual address
  */
-void parse_elf64(FILE *fp, unsigned long long v_addr, unsigned long long v_size, unsigned long long v_offset, STORE_T& store) {
+void parse_elf64(FILE *fp, unsigned long long v_addr,
+                 unsigned long long v_size,
+                 unsigned long long v_offset, STORE_T& store) {
     Elf64_Ehdr ehdr;
     int rc = fread(&ehdr, sizeof(ehdr), 1, fp);
     if (rc != 1) return;
@@ -84,7 +95,7 @@ void parse_elf64(FILE *fp, unsigned long long v_addr, unsigned long long v_size,
     offset = ehdr.e_phoff;
     Elf64_Phdr phdr;
     for (i=0; i<n; i++) {
-        rc = fseek(fp, offset, SEEK_SET); 
+        rc = fseek(fp, offset, SEEK_SET);
         if (rc<0) { perror("fail to seek"); return; }
         rc = fread(&phdr, sizeof(phdr), 1, fp);
         if (rc != 1) { perror("fail to read program header"); return; }
@@ -97,7 +108,10 @@ void parse_elf64(FILE *fp, unsigned long long v_addr, unsigned long long v_size,
         }
         offset+=s;
     }
-    if (i>=n) { printf("No program header match offset found, fail to load\n"); return; }
+    if (i>=n) {
+        printf("No program header match offset found, fail to load\n");
+	    return;
+    }
 
     // load section headers
     n = ehdr.e_shnum;
@@ -106,7 +120,7 @@ void parse_elf64(FILE *fp, unsigned long long v_addr, unsigned long long v_size,
     Elf64_Shdr shdr;
     vector<Elf64_Shdr> headers;
     for (int i=0; i<n; i++) {
-        rc = fseek(fp, offset, SEEK_SET); 
+        rc = fseek(fp, offset, SEEK_SET);
         if (rc<0) { perror("fail to seek"); return; }
         rc = fread(&shdr, sizeof(shdr), 1, fp);
         if (rc != 1) { perror("fail to read sec header"); return; }
@@ -120,53 +134,99 @@ void parse_elf64(FILE *fp, unsigned long long v_addr, unsigned long long v_size,
     char fname[128];
     for (int i=0; i<n; i++) {
         switch(headers[i].sh_type) {
-            case SHT_SYMTAB:
-            case SHT_DYNSYM:
-                offset = headers[i].sh_offset;
-                size = headers[i].sh_size;
-                item_size = headers[i].sh_entsize;
-                link = headers[i].sh_link;
-                if (link<=0) break;
-                for (k=0; k+item_size<=size; k+=item_size) {
-                    rc = fseek(fp, offset+k, SEEK_SET); if (rc<0) continue;
-                    rc = fread(&symb, sizeof(symb), 1, fp); if (rc != 1) continue;
-                    if (ELF64_ST_TYPE(symb.st_info) != STT_FUNC ) continue;
-                    flink = symb.st_shndx; if (flink==0) continue;
-                    fsize = symb.st_size; // if (fsize==0) continue;
-                    faddr = symb.st_value; if (faddr>p_vaddr+p_size) continue;
-                    ix = symb.st_name; if (ix==0) continue;
-                    rc = fseek(fp, headers[link].sh_offset+ix, SEEK_SET); if (rc<0) continue;
-                    if (fgets(fname, sizeof(fname), fp)==NULL) continue;
-                    faddr = faddr-p_vaddr+v_addr;
-                    if (store.count(faddr)) {
-                        if (store[faddr].second<fsize) store[faddr] = make_pair(string(fname), fsize);
-                    } else store[faddr] = make_pair(string(fname), fsize);
-                }
-                break;
-            default:
-                break;
+        case SHT_SYMTAB:
+        case SHT_DYNSYM:
+            offset = headers[i].sh_offset;
+            size = headers[i].sh_size;
+            item_size = headers[i].sh_entsize;
+            link = headers[i].sh_link;
+            if (link<=0) break;
+            for (k=0; k+item_size<=size; k+=item_size) {
+                rc = fseek(fp, offset+k, SEEK_SET);
+                if (rc<0)
+                    continue;
+                rc = fread(&symb, sizeof(symb), 1, fp);
+                if (rc != 1)
+                    continue;
+                if (ELF64_ST_TYPE(symb.st_info) != STT_FUNC )
+                    continue;
+                flink = symb.st_shndx;
+                if (flink==0)
+                    continue;
+                fsize = symb.st_size; // if (fsize==0) continue;
+                faddr = symb.st_value;
+                if (faddr>p_vaddr+p_size)
+                    continue;
+                ix = symb.st_name;
+                if (ix==0)
+                    continue;
+                rc = fseek(fp, headers[link].sh_offset+ix, SEEK_SET);
+                if (rc<0)
+                    continue;
+                if (fgets(fname, sizeof(fname), fp)==NULL)
+                    continue;
+
+                /*New!*/
+                int status = 0;
+                std::unique_ptr<char, void (*)(void *)> demangled_name(
+                    abi::__cxa_demangle(fname,
+                                        nullptr,
+                                        nullptr,
+                                        &status),
+                    std::free);
+
+                string _fname = string(fname);
+                if (status == 0)
+                    _fname = demangled_name.get();
+                /**/
+
+                faddr = faddr-p_vaddr+v_addr;
+                if (store.count(faddr)) {
+                    if (store[faddr].second<fsize)
+                        store[faddr] = make_pair(_fname, fsize);
+                } else
+                    store[faddr] = make_pair(_fname, fsize);
+            }
+            break;
+        default:
+            break;
         }
     }
 }
 
-int load_symbol_from_file(const char *path, unsigned long long addr, unsigned long long size, unsigned long long offset, STORE_T& store) {
+int load_symbol_from_file(const char *path,
+                          unsigned long long addr,
+                          unsigned long long size,
+                          unsigned long long offset,
+                          STORE_T& store) {
     printf("loading symble from %s\n", path);
     FILE *fp = fopen(path, "rb");
-    if (fp==NULL) { perror("fail to open file"); return -1; }
+    if (fp==NULL) {
+        perror("fail to open file"); return -1;
+    }
     char ident[EI_NIDENT], c;
     int err=0;
     int rc = fread(ident, sizeof(ident), 1, fp);
-    if (rc != 1) { perror("fail to read ident"); err=-1; goto end; }
-    if (ident[0]!=0x7f) { printf("not a elf file\n"); err=-1; goto  end; }
+    if (rc != 1) {
+        perror("fail to read ident"); err=-1;
+        goto end;
+    }
+    if (ident[0]!=0x7f) {
+        printf("not a elf file\n"); err=-1;
+        goto end;
+    }
     c=ident[4];
-    rc = fseek(fp, 0, SEEK_SET); if (rc<0) { perror("fail to rewind"); goto end; }
+    rc = fseek(fp, 0, SEEK_SET);
+    if (rc<0) {
+        perror("fail to rewind"); goto end;
+    }
     if (c == ELFCLASS32) {
         printf("32bit elf not supported yet\n"); err=-2; goto end;
     } else if (c == ELFCLASS64) {
         parse_elf64(fp, addr, size, offset, store);
     }
 
-end:
+ end:
     fclose(fp);
     return err;
 }
@@ -228,7 +288,7 @@ STORE_T*  load_symbol_pid(int pid) {
 K_STORE_T* load_kernel() {
     FILE* fp = fopen("/proc/kallsyms", "r");
     if (fp == NULL) return NULL;
-    char *p; 
+    char *p;
     unsigned long long addr;
     int c;
     K_STORE_T* store = new K_STORE_T();
@@ -245,9 +305,14 @@ K_STORE_T* load_kernel() {
 }
 
 //------------------------------perf profiler-------------------------
-static long perf_event_open(struct perf_event_attr *perf_event, pid_t pid, int cpu, int group_fd, unsigned long flags) {
-    return syscall(__NR_perf_event_open, perf_event, pid, cpu, group_fd, flags);
+static long perf_event_open(struct perf_event_attr *perf_event,
+                            pid_t pid, int cpu,
+                            int group_fd,
+                            unsigned long flags) {
+    return syscall(__NR_perf_event_open,
+                   perf_event, pid, cpu, group_fd, flags);
 }
+
 unordered_map<int, STORE_T*> pid_symbols;
 K_STORE_T* kernel_symbols = NULL;
 
@@ -269,7 +334,9 @@ void int_exit(int _) {
     if (gnode!=NULL) {
         FILE* fp = fopen("./report.html", "w");
         if (fp) {
-            fprintf(fp, "<head> <link rel=\"stylesheet\" href=\"report.css\"> <script src=\"report.js\"> </script> </head>\n");
+            fprintf(fp, "<head> <link rel=\"stylesheet\" \
+			    href=\"report.css\"> <script \
+			    src=\"report.js\"> </script> </head>\n");
             fprintf(fp, "<ul class=\"tree\">\n");
             gnode->printit(fp, 0);
             fprintf(fp, "</ul>\n");
@@ -285,8 +352,9 @@ void int_exit(int _) {
     exit(0);
 }
 /*
-perf call chain process
-For now, if a address would not be located to some function, the address would be skipped.
+ * perf call chain process
+ * For now, if a address would not be
+ * located to some function, the address would be skipped.
  */
 int process_event(char *base, unsigned long long size, unsigned long long offset) {
     struct perf_event_header* p = NULL;
@@ -298,9 +366,16 @@ int process_event(char *base, unsigned long long size, unsigned long long offset
     offset+=sizeof(*p); if (offset>=size) offset-=size;
     if (p->type != PERF_RECORD_SAMPLE) return p->size;
     // pid, tip;
-    pid = *((int *)(base+offset));  offset+=8; if (offset>=size) offset-=size;
-    unsigned long long nr = *((unsigned long long*)(base+offset)); offset+=8; if (offset>=size) offset-=size;
-    if (nr>128) return -1;
+    pid = *((int *)(base+offset));
+    offset+=8;
+    if (offset>=size)
+        offset-=size;
+    unsigned long long nr = *((unsigned long long*)(base+offset));
+    offset+=8;
+    if (offset>=size)
+        offset-=size;
+    if (nr>128)
+        return -1;
     unsigned long long addr, o, addr0;
     if (nr) {
         if (gnode==NULL) gnode=new TNode();
