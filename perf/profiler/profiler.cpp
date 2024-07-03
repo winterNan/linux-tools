@@ -40,7 +40,8 @@ struct TNode {
     unordered_map<string, TNode*> s;
     struct TNode *add(string n) {
         c++;
-        if (s[n]==nullptr) s[n] = new TNode();
+        if (s[n]==nullptr)
+            s[n] = new TNode();
         return s[n];
     }
     int printit(FILE *fp, int k) {
@@ -421,25 +422,25 @@ int process_event(char *base,
     // assuming the header would fit within size
     p = (struct perf_event_header*) (base + offset);
     offset += sizeof(*p);
-    if (offset>=size)
-        offset-=size;
+    if (offset >= size)
+        offset -= size;
     if (p->type != PERF_RECORD_SAMPLE)
         return p->size;
     // pid, tip;
     pid = *((int *)(base + offset));
     offset += 8;
-    if (offset>=size)
-        offset-=size;
+    if (offset >= size)
+        offset -= size;
     unsigned long long nr = *((unsigned long long*)(base + offset));
     offset += 8;
-    if (offset>=size)
-        offset-=size;
+    if (offset >= size)
+        offset -= size;
     if (nr > 128)
         return -1;
     unsigned long long addr, o, addr0;
     if (nr) {
         if (gnode==NULL)
-            gnode=new TNode();
+            gnode = new TNode();
         char bb[64];
         TNode* r = gnode;
         if (pid_symbols.count(pid)==0)
@@ -483,13 +484,13 @@ int process_event(char *base,
                     continue;
                 if (px) {
                     auto x = px->upper_bound(addr);
-                    if (x==px->begin()) {
+                    if (x == px->begin()) {
                         sprintf(bb, "0x%llx", addr);
                         r = r->add(string(bb));
-                        cout << string(bb) << endl;
                         if (start_mark) {
                             auto y = (*x).second;
                             r = r->add(y.first+"?");
+                            cout << y.first+"?" << endl;
                         }
                     } else {
                         x--;
@@ -498,26 +499,29 @@ int process_event(char *base,
                             r = r->add(y.first);
                             sprintf(bb, "0x%llx", addr);
                             r = r->add(string(bb));
-                            cout << string(bb) << endl;
                             if (start_mark) {
                                 x++;
-                                if (x==px->end())
+                                if (x==px->end()){
                                     r = r->add(y.first+"??");
+                                    cout << y.first+"??" << endl;
+                                }
                                 else {
                                     auto z = (*x).second;
                                     r = r->add(y.first+"?"+z.first);
+                                    cout << y.first+"?"+z.first << endl;
                                 }
                             }
                         } else {
                             start_mark=1;
                             r = r->add(y.first);
+                            cout << y.first << endl;
                         }
                     }
                 } else {
                     sprintf(bb, "0x%llx", addr);
                     r = r->add(string(bb));
-                    cout << string(bb) << endl;
                     r = r->add(string("unknown"));
+                    cout << "unknown" << endl;
                 }
                 user_mark=1;
             }
