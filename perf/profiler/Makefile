@@ -1,2 +1,2 @@
 all:
-	g++ -fno-stack-protector -g -o profiler profiler.cpp     
+	g++ -static -fno-stack-protector -g -o profiler profiler.cpp     
