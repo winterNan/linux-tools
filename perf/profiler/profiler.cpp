@@ -33,6 +33,7 @@ using namespace std;
 #define error(msg) do { perror(msg); exit(1); } while(0)
 
 static char gflag_kernel_only = 0;
+static char gflag_runtime_stack = 0;
 
 /* Tree for call chain and report */
 struct TNode {
@@ -490,7 +491,8 @@ int process_event(char *base,
                         if (start_mark) {
                             auto y = (*x).second;
                             r = r->add(y.first+"?");
-                            cout << y.first+"?" << endl;
+                            if (gflag_runtime_stack)
+                                cout << y.first+"?" << endl;
                         }
                     } else {
                         x--;
@@ -503,25 +505,29 @@ int process_event(char *base,
                                 x++;
                                 if (x==px->end()){
                                     r = r->add(y.first+"??");
-                                    cout << y.first+"??" << endl;
+                                    if (gflag_runtime_stack)
+                                        cout << y.first+"??" << endl;
                                 }
                                 else {
                                     auto z = (*x).second;
                                     r = r->add(y.first+"?"+z.first);
-                                    cout << y.first+"?"+z.first << endl;
+                                    if (gflag_runtime_stack)
+                                        cout << y.first+"?"+z.first << endl;
                                 }
                             }
                         } else {
                             start_mark=1;
                             r = r->add(y.first);
-                            cout << y.first << endl;
+                            if (gflag_runtime_stack)
+                                cout << y.first << endl;
                         }
                     }
                 } else {
                     sprintf(bb, "0x%llx", addr);
                     r = r->add(string(bb));
                     r = r->add(string("unknown"));
-                    cout << "unknown" << endl;
+                    if (gflag_runtime_stack)
+                        cout << "unknown" << endl;
                 }
                 user_mark=1;
             }
@@ -532,17 +538,30 @@ int process_event(char *base,
 
 int main(int argc, char *argv[]) {
     kernel_symbols = load_kernel();
-    if (argc<2) { printf("Need pid\n"); return 1; }
+    if (argc<2) {
+        printf("Need pid\n");
+        return 1;
+    }
     int pid = atoi(argv[1]);
-    if (pid<0) { gflag_kernel_only = 1; pid=-pid; }
-    if (pid==0) { printf("invalid pid %s\n", argv[1]); return 1; }
+    if (pid<0) {
+        gflag_kernel_only = 1;
+        pid=-pid;
+    }
+    if (pid==0) {
+        printf("invalid pid %s\n", argv[1]);
+        return 1;
+    }
+
+    gflag_runtime_stack = (atoi(argv[2])!=0);
+
     // find cgroup
     char xb[256], xb2[256];
     int i, j, k, fd;
     void* addr;
     sprintf(xb, "/proc/%d/cgroup", pid);
     FILE* fp = fopen(xb, "r");
-    if (fp==NULL) error("fail to open cgroup file");
+    if (fp==NULL)
+        error("fail to open cgroup file");
     char *p;
     xb2[0]=0;
     int cgroup_name_len=0;
