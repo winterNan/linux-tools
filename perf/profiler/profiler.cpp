@@ -47,12 +47,14 @@ struct TNode {
         if (s.size()) {
             using tt = tuple<int, string, TNode*>;
             vector<tt> xx;
-            for (auto x: s) xx.push_back(make_tuple(x.second->c, x.first, x.second));
+            for (auto x: s)
+                xx.push_back(make_tuple(x.second->c, x.first, x.second));
             sort(begin(xx), end(xx), greater<tt>());
             for (auto x: xx) {
                 auto count = get<0>(x);
 		        /* threshold of showing the result */
-                // if (100.0*count/c<1) continue;
+                // if (100.0*count/c<1)
+                //     continue;
                 auto name = get<1>(x);
                 auto nx = get<2>(x);
                 fprintf(fp, "<li>\n");
@@ -75,6 +77,22 @@ struct TNode {
 using STORE_T = map<unsigned long long, pair<string, unsigned long long>>;
 using K_STORE_T = map<unsigned long long, string>;
 
+// string getFnameFromCommand(string cmd) {
+//     string data;
+//     FILE *stream;
+//     const int max_buffer = 256;
+//     char buffer[max_buffer];
+//     cmd.append(" 2>&1"); // Do we want STDERR?
+//     stream = popen(cmd.c_str(), "r");
+//     if (stream) {
+//         while (!feof(stream))
+//             if (fgets(buffer, max_buffer, stream) != NULL)
+//                 data.append(buffer);
+//         pclose(stream);
+//     }
+//     return data;
+// }
+
 /*
  * load FUNC symbols refering to the section indicated by the offset,
  * relocate the virtual address
@@ -96,13 +114,21 @@ void parse_elf64(FILE *fp, unsigned long long v_addr,
     Elf64_Phdr phdr;
     for (i=0; i<n; i++) {
         rc = fseek(fp, offset, SEEK_SET);
-        if (rc<0) { perror("fail to seek"); return; }
+        if (rc<0) {
+            perror("fail to seek");
+            return;
+        }
         rc = fread(&phdr, sizeof(phdr), 1, fp);
-        if (rc != 1) { perror("fail to read program header"); return; }
+        if (rc != 1) {
+            perror("fail to read program header");
+            return;
+        }
         if (phdr.p_flags&PF_X) {
             if (phdr.p_offset == v_offset) {
                 p_vaddr = phdr.p_vaddr;
-                p_size = phdr.p_memsz; if (p_size==0) p_size = 0xffffffff;
+                p_size = phdr.p_memsz;
+                if (p_size==0)
+                    p_size = 0xffffffff;
                 break;
             }
         }
@@ -131,7 +157,7 @@ void parse_elf64(FILE *fp, unsigned long long v_addr,
     unsigned long long faddr, fsize;
     unsigned long long size, item_size;
     int link, ix, flink, k;
-    char fname[128];
+    char fname[2048];
     for (int i=0; i<n; i++) {
         switch(headers[i].sh_type) {
         case SHT_SYMTAB:
@@ -166,27 +192,24 @@ void parse_elf64(FILE *fp, unsigned long long v_addr,
                 if (fgets(fname, sizeof(fname), fp)==NULL)
                     continue;
 
-                /*New!*/
+                /* demangling function */
                 int status = 0;
-                std::unique_ptr<char, void (*)(void *)> demangled_name(
-                    abi::__cxa_demangle(fname,
-                                        nullptr,
-                                        nullptr,
-                                        &status),
-                    std::free);
-
-                string _fname = string(fname);
-                if (status == 0)
-                    _fname = demangled_name.get();
-                /**/
+                char* de_name = abi::__cxa_demangle(fname, nullptr, nullptr, &status);
+                if (de_name == NULL)
+                    de_name = fname;
+                // if (status != 0) {
+                //     char cmd[2048]="llvm-cxxfilt-11 -t ";
+                //     strcat(cmd, fname);
+                //     de_name = getFnameFromCommand(cmd).data();
+                // }
 
                 faddr = faddr-p_vaddr+v_addr;
                 if (store.count(faddr)) {
                     if (store[faddr].second<fsize)
-                        store[faddr] = make_pair(_fname, fsize);
+                        store[faddr] = make_pair(string(de_name), fsize);
                 } else
-                    store[faddr] = make_pair(_fname, fsize);
-            }
+                    store[faddr] = make_pair(string(de_name), fsize);
+                  }
             break;
         default:
             break;
@@ -256,7 +279,8 @@ STORE_T*  load_symbol_pid(int pid) {
     char bb[256];
     sprintf(bb, "/proc/%d/maps", pid);
     FILE* fp = fopen(bb, "r");
-    if (fp==NULL) return NULL;
+    if (fp==NULL)
+        return NULL;
     STORE_T *store = new STORE_T();
     unsigned long long start, end, offset, inode;
     char *p;
@@ -264,14 +288,31 @@ STORE_T*  load_symbol_pid(int pid) {
     char fname[128], xx[64], xxx[32], mod[16], idx[16];
     while(1) {
         p=fgets(bb, sizeof(bb), fp); if (p==NULL) break;
-        if (sscanf(p, "%s %s %s %s %lld %s", xx, mod, xxx, idx, &inode, fname)!=6) continue;
-        i=0; c=0;
-        start = parse_hex(xx, &c); if (c==0) continue; i+=c; if (p[i]!='-') continue; i++;
-        end = parse_hex(xx+i, &c); if (c==0) continue;
+        if (sscanf(p, "%s %s %s %s %lld %s", xx, mod, xxx, idx, &inode, fname)!=6)
+            continue;
+        i=0;
+        c=0;
+        start = parse_hex(xx, &c);
+        if (c==0)
+            continue;
+        i+=c;
+        if (p[i]!='-')
+            continue;
+        i++;
+        end = parse_hex(xx+i, &c);
+        if (c==0)
+            continue;
         // parse type
-        for (j=0; j<8; j++) if (mod[j]=='x') break; if (j>=8) continue;
-        if (fname[0]!='/') continue;
-        offset = parse_hex(xxx, &c); if (c==0) continue;
+        for (j=0; j<8; j++)
+            if (mod[j]=='x')
+                break;
+        if (j>=8)
+            continue;
+        if (fname[0]!='/')
+            continue;
+        offset = parse_hex(xxx, &c);
+        if (c==0)
+            continue;
         // remaining should contains '/' indicating this mmap is refering to a file
         sprintf(bb, "/proc/%d/root%s", pid, fname);
         load_symbol_from_file(bb, start, end-start, offset, *store);
@@ -294,10 +335,16 @@ K_STORE_T* load_kernel() {
     K_STORE_T* store = new K_STORE_T();
     char bb[128], adr[128], type[8], name[128];
     while(1) {
-        p = fgets(bb, sizeof(bb), fp); if (p==NULL) break;
-        if (sscanf(p, "%s %s %s", adr, type, name)!=3) continue;;
-        if (type[0]!='t'&&type[0]!='T') continue;
-        addr=parse_hex(adr, &c); if (c==0) continue;
+        p = fgets(bb, sizeof(bb), fp);
+        if (p==NULL)
+            break;
+        if (sscanf(p, "%s %s %s", adr, type, name)!=3)
+            continue;;
+        if (type[0]!='t'&&type[0]!='T')
+            continue;
+        addr=parse_hex(adr, &c);
+        if (c==0)
+            continue;
         (*store)[addr] = string(name);
     }
     return store;
@@ -381,37 +428,46 @@ int process_event(char *base, unsigned long long size, unsigned long long offset
         if (gnode==NULL) gnode=new TNode();
         char bb[64];
         TNode* r = gnode;
-        if (pid_symbols.count(pid)==0) pid_symbols[pid] = load_symbol_pid(pid);
+        if (pid_symbols.count(pid)==0)
+            pid_symbols[pid] = load_symbol_pid(pid);
         STORE_T* px = pid_symbols[pid];
         addr0 = *((unsigned long long *)(base+offset));
         char user_mark=0, start_mark=0;
         for (int i=nr-1; i>=0; i--) {
             o = i*8+offset; if (o>=size) o-=size;
             addr = *((unsigned long long*)(base+o));
-            if (addr==0) continue; // something wrong?
+            if (addr==0)
+                continue; // something wrong?
             if ((addr>>56)==(addr0>>56) && (p->misc&PERF_RECORD_MISC_KERNEL)) {
                 // skip the cross line command, no idear how to correctly resolve it now.
-                if (user_mark) { user_mark=0; continue; }
+                if (user_mark) {
+                    user_mark=0;
+                    continue;
+                }
                 // check in kernel
                 if (kernel_symbols&&!kernel_symbols->empty()) {
                     auto x = kernel_symbols->upper_bound(addr);
                     if (x==kernel_symbols->begin()) {
-                        // sprintf(bb, "0x%llx", addr); r = r->add(string(bb));
+                        sprintf(bb, "0x%llx", addr);
+                        r = r->add(string(bb));
                         r = r->add(string("unknown"));
                     } else {
                         x--;
                         r = r->add((*x).second);
                     }
                 } else {
-                    // sprintf(bb, "0x%llx", addr); r = r->add(string(bb));
+                    sprintf(bb, "0x%llx", addr);
+                    r = r->add(string(bb));
                     r = r->add(string("unknown"));
                 }
             } else {
-                if (gflag_kernel_only) continue;
+                if (gflag_kernel_only)
+                    continue;
                 if (px) {
                     auto x = px->upper_bound(addr);
                     if (x==px->begin()) {
-                        // sprintf(bb, "0x%llx", addr); r = r->add(string(bb));
+                        sprintf(bb, "0x%llx", addr);
+                        r = r->add(string(bb));
                         if (start_mark) {
                             auto y = (*x).second;
                             r = r->add(y.first+"?");
@@ -420,11 +476,12 @@ int process_event(char *base, unsigned long long size, unsigned long long offset
                         x--;
                         auto y = (*x).second;
                         if (y.second && addr>(*x).first+y.second) {
-                            // r = r->add(y.first);
-                            // sprintf(bb, "0x%llx", addr); r = r->add(string(bb));
+                            r = r->add(y.first);
+                            sprintf(bb, "0x%llx", addr); r = r->add(string(bb));
                             if (start_mark) {
                                 x++;
-                                if (x==px->end()) r = r->add(y.first+"??");
+                                if (x==px->end())
+                                    r = r->add(y.first+"??");
                                 else {
                                     auto z = (*x).second;
                                     r = r->add(y.first+"?"+z.first);
@@ -436,8 +493,8 @@ int process_event(char *base, unsigned long long size, unsigned long long offset
                         }
                     }
                 } else {
-                    // sprintf(bb, "0x%llx", addr); r = r->add(string(bb));
-                    // r = r->add(string("unknown"));
+                    sprintf(bb, "0x%llx", addr); r = r->add(string(bb));
+                    r = r->add(string("unknown"));
                 }
                 user_mark=1;
             }
@@ -463,16 +520,30 @@ int main(int argc, char *argv[]) {
     xb2[0]=0;
     int cgroup_name_len=0;
     while(1) {
-        p = fgets(xb, sizeof(xb), fp); if (p==NULL) break;
-        i=0; while(p[i]&&p[i]!=':') i++; if (p[i]==0) continue; 
+        p = fgets(xb, sizeof(xb), fp);
+        if (p==NULL)
+            break;
+        i=0; while(p[i]&&p[i]!=':') i++; if (p[i]==0) continue;
         if (strstr(p, "perf_event")) {
-            i++; while(p[i]!=':'&&p[i]) i++;  if (p[i]!=':') continue; i++;
-            j=i; while(p[j]!='\r'&&p[j]!='\n'&&p[j]!=0) j++; p[j]=0;
-            sprintf(xb2, "/sys/fs/cgroup/perf_event%s", p+i);
+            i++;
+            while(p[i]!=':'&&p[i])
+                i++;
+            if (p[i]!=':')
+                continue;
+            i++;
+            j=i;
+            while(p[j]!='\r'&&p[j]!='\n'&&p[j]!=0)
+                j++;
+            p[j]=0;
+            sprintf(xb2, "/sys/fs/cgroup/%s", p+i);
             cgroup_name_len=j-i;
             break;
         } else if (p[i+1]==':') {
-            i+=2; j=i; while(p[j]!='\r'&&p[j]!='\n'&&p[j]!=0) j++; p[j]=0;
+            i+=2;
+            j=i;
+            while(p[j]!='\r'&&p[j]!='\n'&&p[j]!=0)
+                j++;
+            p[j]=0;
             sprintf(xb2, "/sys/fs/cgroup/%s", p+i);
             cgroup_name_len=j-i;
         }
