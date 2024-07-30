@@ -6,14 +6,17 @@ then
     sudo mkdir -p $CGROUP_DIR
 fi
 
-PROGPATH=/home/yuan/Benchmarks/ascylib-vanilla/bin/
-PROG="lf-ll_harris -n 2 -i 16000000"
+# PROGPATH=/home/yuan/Benchmarks/ascylib-vanilla/bin/
+# PROG="lf-ll_harris -n 2 -i 16000000"
 
-$PROGPATH/${PROG} &
+PROGPATH=
+PROG=firefox
+
+$PROGPATH${PROG} &
 
 PID=$!
 echo $PID | sudo tee $CGROUP_DIR/cgroup.procs
 
-sudo ../profiler $PID 0
+sudo ../profiler $PID 1
 sudo chown yuan:yuan report.html
 mv report.html ../
