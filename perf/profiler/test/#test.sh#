@@ -1,0 +1,25 @@
+#!/usr/bin
+
+CGROUP_DIR=/sys/fs/cgroup/perf_event/test/
+if [[ ! -d $CGROUP_DIR ]]
+then
+    sudo mkdir -p $CGROUP_DIR
+fi
+
+# PROGPATH=/home/yuan/Benchmarks/ascylib-vanilla/bin/
+# PROG="lf-ll_harris -n 2 -i 16000000"
+
+PROGPATH=/home/yuan/dealiixgem5/dealii-uart/build/applications/
+PROG="matrixfree_01 --enable sparse_matrix --fe_degree 3 --n_refinements 4 --n_repetitions 100"
+
+PROGPATH=
+PROG=firefox
+
+$PROGPATH${PROG} &
+
+PID=$!
+echo $PID | sudo tee $CGROUP_DIR/cgroup.procs
+
+sudo ../profiler $PID 1
+sudo chown yuan:yuan report.html
+mv report.html ../
